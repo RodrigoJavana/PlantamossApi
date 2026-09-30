@@ -1,0 +1,64 @@
+# Plantamoss 2026 — base de datos + API
+#   Solo la BD (para correr la API con `dotnet run`):  docker compose up -d db
+#   Todo (BD + API en contenedor):                     docker compose up -d --build
+#   Con pgAdmin (http://localhost:5050):               docker compose --profile tools up -d
+name: plantamoss
+
+services:
+  db:
+    build: ./database
+    image: plantamoss-db
+    container_name: plantamoss-db
+    restart: unless-stopped
+    ports:
+      - "5434:5432"
+    volumes:
+      - plantamoss_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plantamoss -d plantamoss -h 127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build: ./PlantamossApi
+    image: plantamoss-api
+    container_name: plantamoss-api
+    restart: unless-stopped
+    ports:
+      - "5080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=plantamoss;Username=plantamoss;Password=plantamoss_dev"
+      # Secretos: SOLO desde .env (sin valores por defecto en este archivo versionado)
+      Jwt__Key: ${JWT_KEY:?Define JWT_KEY en ApiPlantamoss/.env (ver .env.example)}
+      Seguridad__PepperCodigos: ${PEPPER_CODIGOS:-}
+      Cors__Origins__0: ${CORS_ORIGIN:-http://localhost:5173}
+      OpenWeather__ApiKey: ${OPENWEATHER_API_KEY:-}
+      YouTube__ApiKey: ${YOUTUBE_API_KEY:-}
+      Smtp__Host: ${SMTP_HOST:-}
+      Smtp__Port: ${SMTP_PORT:-465}
+      Smtp__User: ${SMTP_USER:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
+      Smtp__From: ${SMTP_FROM:-}
+      Smtp__EnableSsl: ${SMTP_ENABLE_SSL:-true}
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: plantamoss-pgadmin
+    profiles: ["tools"]
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@plantamoss.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-plantamoss_dev}
+    depends_on:
+      - db
+
+volumes:
+  plantamoss_pgdata:
+    name: plantamoss_pgdata
